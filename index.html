@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mis Finanzas</title>
+  <link href="https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body {
+      font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(180deg, #f5f5f7 0%, #e9ebee 100%);
+      color: #1c1c1e;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.6);
+      backdrop-filter: blur(16px);
+      border-radius: 24px;
+      border: 1px solid rgba(255,255,255,0.4);
+      box-shadow: 0 4px 30px rgba(0,0,0,0.05);
+      transition: transform 0.2s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-2px);
+    }
+
+    .opcion {
+      border: 1px solid transparent;
+      transition: all 0.25s ease;
+    }
+
+    .opcion:hover {
+      transform: scale(1.05);
+      border-color: rgba(0,122,255,0.3);
+      cursor: pointer;
+    }
+
+    .opcion.activa {
+      background: rgba(0,122,255,0.1);
+      border-color: #007aff;
+    }
+  </style>
+</head>
+<body class="flex flex-col items-center p-6 min-h-screen">
+
+  <h1 class="text-4xl font-semibold mb-6 mt-4 tracking-tight">Mis Finanzas</h1>
+
+  <!-- FORMULARIO -->
+  <div class="card w-full max-w-md p-6">
+    <form id="formTransaccion" class="flex flex-col gap-4">
+
+      <!-- Tipo -->
+      <div>
+        <p class="text-gray-600 mb-2 text-sm">Selecciona tipo</p>
+        <div id="tipos" class="grid grid-cols-2 gap-3">
+          <div class="opcion flex flex-col items-center p-4 rounded-xl bg-white/80" data-tipo="ingreso">
+            <i data-lucide="arrow-down-circle" style="color:#34c759;width:28px;height:28px;"></i>
+            <span class="text-sm mt-1 text-gray-700 font-medium">Ingreso</span>
+          </div>
+          <div class="opcion flex flex-col items-center p-4 rounded-xl bg-white/80" data-tipo="gasto">
+            <i data-lucide="arrow-up-circle" style="color:#ff3b30;width:28px;height:28px;"></i>
+            <span class="text-sm mt-1 text-gray-700 font-medium">Gasto</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Categorías -->
+      <div>
+        <p class="text-gray-600 mb-2 text-sm">Selecciona categoría</p>
+        <div id="categorias" class="grid grid-cols-4 gap-3"></div>
+      </div>
+
+      <input id="descripcion" type="text" placeholder="Descripción" class="border border-gray-300 p-3 rounded-xl bg-white/80" required />
+      <input id="cantidad" type="number" step="0.01" placeholder="Cantidad (€)" class="border border-gray-300 p-3 rounded-xl bg-white/80" required />
+
+      <button type="submit" class="bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3 rounded-xl font-medium hover:opacity-90 transition-all duration-300 shadow">
+        Agregar
+      </button>
+    </form>
+  </div>
+
+  <!-- TOTALES -->
+  <div class="grid grid-cols-3 gap-3 w-full max-w-md text-center mt-6">
+    <div class="card p-4">
+      <h2 class="text-gray-500 text-sm mb-1">Ingresos</h2>
+      <p id="totalIngresos" class="text-green-600 text-xl font-semibold">0 €</p>
+    </div>
+    <div class="card p-4">
+      <h2 class="text-gray-500 text-sm mb-1">Gastos</h2>
+      <p id="totalGastos" class="text-red-600 text-xl font-semibold">0 €</p>
+    </div>
+    <div class="card p-4">
+      <h2 class="text-gray-500 text-sm mb-1">Balance</h2>
+      <p id="balance" class="text-blue-600 text-xl font-semibold">0 €</p>
+    </div>
+  </div>
+
+  <!-- GRÁFICO -->
+  <div class="card w-full max-w-md mt-6 p-6">
+    <h2 class="text-xl font-medium mb-3">Gráfico de Balance</h2>
+    <canvas id="graficoBalance" height="200"></canvas>
+  </div>
+
+  <!-- HISTORIAL -->
+  <div class="card w-full max-w-md p-5 mt-6">
+    <h2 class="text-xl font-medium mb-3">Historial</h2>
+    <ul id="listaTransacciones" class="divide-y divide-gray-200 text-sm"></ul>
+  </div>
+
+  <footer class="text-gray-400 text-xs mt-8">
+    Hecho con estilo por <span class="text-gray-600 font-medium">DarielsMtz</span>
+  </footer>
+
+  <script>
+    const lista = document.getElementById("listaTransacciones");
+    const totalIngresos = document.getElementById("totalIngresos");
+    const totalGastos = document.getElementById("totalGastos");
+    const balance = document.getElementById("balance");
+    const graficoCtx = document.getElementById("graficoBalance").getContext("2d");
+    const contenedorCategorias = document.getElementById("categorias");
+    const contenedorTipos = document.getElementById("tipos");
+    let transacciones = JSON.parse(localStorage.getItem("transacciones")) || [];
+    let categoriaSeleccionada = null;
+    let tipoSeleccionado = null;
+    let chart;
+
+    const categoriasData = [
+      { nombre: "Salario", icono: "wallet", color: "#34c759" },
+      { nombre: "Inversiones", icono: "line-chart", color: "#30b0ff" },
+      { nombre: "Freelance", icono: "briefcase", color: "#ff9f0a" },
+      { nombre: "Regalos", icono: "gift", color: "#af52de" },
+      { nombre: "Comida", icono: "utensils", color: "#ff3b30" },
+      { nombre: "Transporte", icono: "bus", color: "#5856d6" },
+      { nombre: "Vivienda", icono: "home", color: "#ff9500" },
+      { nombre: "Entretenimiento", icono: "tv", color: "#00aaff" },
+      { nombre: "Educación", icono: "book-open", color: "#007aff" },
+      { nombre: "Salud", icono: "heart-pulse", color: "#ff375f" },
+      { nombre: "Otros", icono: "more-horizontal", color: "#8e8e93" }
+    ];
+
+    // Crear categorías con iconos
+    categoriasData.forEach(cat => {
+      const div = document.createElement("div");
+      div.className = "opcion flex flex-col items-center justify-center p-3 rounded-xl bg-white/80";
+      div.innerHTML = `
+        <i data-lucide="${cat.icono}" style="color:${cat.color};width:24px;height:24px;"></i>
+        <span class="text-xs mt-1 text-gray-700">${cat.nombre}</span>
+      `;
+      div.addEventListener("click", () => seleccionarCategoria(div, cat.nombre));
+      contenedorCategorias.appendChild(div);
+    });
+
+    lucide.createIcons();
+
+    function seleccionarCategoria(div, nombre) {
+      document.querySelectorAll("#categorias .opcion").forEach(c => c.classList.remove("activa"));
+      div.classList.add("activa");
+      categoriaSeleccionada = nombre;
+    }
+
+    contenedorTipos.querySelectorAll(".opcion").forEach(div => {
+      div.addEventListener("click", () => {
+        document.querySelectorAll("#tipos .opcion").forEach(c => c.classList.remove("activa"));
+        div.classList.add("activa");
+        tipoSeleccionado = div.dataset.tipo;
+      });
+    });
+
+    document.getElementById("formTransaccion").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const descripcion = e.target.descripcion.value.trim();
+      const cantidad = parseFloat(e.target.cantidad.value);
+
+      if (!descripcion || cantidad <= 0 || !categoriaSeleccionada || !tipoSeleccionado)
+        return alert("Por favor, selecciona un tipo y una categoría.");
+
+      const transaccion = { id: Date.now(), tipo: tipoSeleccionado, categoria: categoriaSeleccionada, descripcion, cantidad };
+      transacciones.push(transaccion);
+      localStorage.setItem("transacciones", JSON.stringify(transacciones));
+
+      e.target.reset();
+      categoriaSeleccionada = null;
+      tipoSeleccionado = null;
+      document.querySelectorAll(".opcion").forEach(c => c.classList.remove("activa"));
+      actualizarUI();
+    });
+
+    function eliminar(id) {
+      transacciones = transacciones.filter(t => t.id !== id);
+      localStorage.setItem("transacciones", JSON.stringify(transacciones));
+      actualizarUI();
+    }
+
+    function actualizarUI() {
+      lista.innerHTML = "";
+      let ingresos = 0, gastos = 0;
+
+      transacciones.slice().reverse().forEach(t => {
+        const li = document.createElement("li");
+        li.className = "flex justify-between items-center py-3";
+        li.innerHTML = `
+          <div>
+            <p class="font-medium">${t.descripcion}</p>
+            <p class="text-gray-500 text-xs">${t.tipo} · ${t.categoria}</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="${t.tipo === 'ingreso' ? 'text-green-600' : 'text-red-600'} font-semibold">
+              ${t.tipo === 'ingreso' ? '+' : '-'}${t.cantidad.toFixed(2)} €
+            </span>
+            <button onclick="eliminar(${t.id})" class="text-gray-400 hover:text-red-500 transition">✕</button>
+          </div>
+        `;
+        lista.appendChild(li);
+
+        if (t.tipo === "ingreso") ingresos += t.cantidad;
+        else gastos += t.cantidad;
+      });
+
+      const total = ingresos - gastos;
+      totalIngresos.textContent = `${ingresos.toFixed(2)} €`;
+      totalGastos.textContent = `${gastos.toFixed(2)} €`;
+      balance.textContent = `${total.toFixed(2)} €`;
+
+      actualizarGrafico(ingresos, gastos);
+    }
+
+    function actualizarGrafico(ingresos, gastos) {
+      const datos = [ingresos, gastos];
+      const colores = ["#34c759", "#ff3b30"];
+      const etiquetas = ["Ingresos", "Gastos"];
+      if (chart) chart.destroy();
+
+      chart = new Chart(graficoCtx, {
+        type: "doughnut",
+        data: {
+          labels: etiquetas,
+          datasets: [{
+            data: datos,
+            backgroundColor: colores,
+            borderWidth: 1
+          }]
+        },
+        options: {
+          plugins: { legend: { position: "bottom" } },
+          cutout: "70%"
+        }
+      });
+    }
+
+    actualizarUI();
+  </script>
+</body>
+</html>
